@@ -62,6 +62,11 @@ public abstract class AbstractProcessorMojo extends AbstractMojo {
      * @parameter
      */
     private String processor;
+    
+    /**
+     * @parameter
+     */
+    private boolean verbose;
 
     /**
      * @parameter expression="${project.build.sourceEncoding}" required=true
@@ -80,21 +85,39 @@ public abstract class AbstractProcessorMojo extends AbstractMojo {
 
     /**
      * A list of inclusion package filters for the apt processor.
-     * 
+     *
      * If not specified all sources will be used for apt processor
-     * 
+     *
      * <pre>
      * e.g.:
      * &lt;includes&gt;
      * 	&lt;include&gt;com.mypackge.**.bo.**&lt;/include&gt;
      * &lt;/includes&gt;
      * </pre>
-     * 
+     *
      * will include all files which match com/mypackge/ ** /bo/ ** / *.java
-     * 
+     *
      * @parameter
      */
     private Set<String> includes = new HashSet<String>();
+
+    /**
+     * A list of inclusion package filters for the apt processor.
+     *
+     * If not specified all sources will be used for apt processor
+     *
+     * <pre>
+     * e.g.:
+     * &lt;includes&gt;
+     * 	&lt;include&gt;com.mypackge.**.bo.**&lt;/include&gt;
+     * &lt;/includes&gt;
+     * </pre>
+     *
+     * will include all files which match com/mypackge/ ** /bo/ ** / *.java
+     *
+     * @parameter
+     */
+    private Set<String> excludes = new HashSet<String>();
 
     /**
      * @parameter
@@ -181,6 +204,10 @@ public abstract class AbstractProcessorMojo extends AbstractMojo {
             compilerOpts.put("encoding", sourceEncoding);
         }
 
+        if (this.verbose) {
+            compilerOpts.put("verbose", null);
+        }
+
         compilerOpts.put("proc:only", null);
         compilerOpts.put("processor", processor);
 
@@ -248,12 +275,26 @@ public abstract class AbstractProcessorMojo extends AbstractMojo {
                 filters[i] = filters[i].replace('.', '/') + JAVA_FILE_FILTER;
             }
         }
-        
-        Set<File> files = new HashSet<File>();        
+
+        String[] filtersEx = null;
+        if (excludes != null && !excludes.isEmpty()) {
+            filtersEx = excludes.toArray(new String[excludes.size()]);
+            for (int i = 0; i < filtersEx.length; i++) {
+                filtersEx[i] = filtersEx[i].replace('.', '/') + JAVA_FILE_FILTER;
+            }
+        }
+
+        Set<File> files = new HashSet<File>();
         for (File directory : directories) {
             // support for incremental build in m2e context
             Scanner scanner = buildContext.newScanner(directory, false);
+
             scanner.setIncludes(filters);
+
+            if (filtersEx != null) {
+                scanner.setExcludes(filtersEx);
+            }
+
             scanner.scan();            
             String[] includedFiles = scanner.getIncludedFiles();
 
@@ -261,6 +302,11 @@ public abstract class AbstractProcessorMojo extends AbstractMojo {
             if (buildContext.isIncremental() && (includedFiles == null || includedFiles.length == 0)) {
                 scanner = buildContext.newDeleteScanner(directory);
                 scanner.setIncludes(filters);
+
+                if (filtersEx != null) {
+                    scanner.setExcludes(filtersEx);
+                }
+
                 scanner.scan();
                 includedFiles = scanner.getIncludedFiles();
             }
@@ -269,6 +315,11 @@ public abstract class AbstractProcessorMojo extends AbstractMojo {
             if (ignoreDelta && buildContext.isIncremental() && includedFiles != null && includedFiles.length > 0) {
                 scanner = buildContext.newScanner(directory, true);
                 scanner.setIncludes(filters);
+
+                if (filtersEx != null) {
+                    scanner.setExcludes(filtersEx);
+                }
+
                 scanner.scan();
                 includedFiles = scanner.getIncludedFiles();
             }
@@ -383,6 +434,7 @@ public abstract class AbstractProcessorMojo extends AbstractMojo {
             ExecutorService executor = Executors.newSingleThreadExecutor();
             try {
                 DiagnosticCollector<JavaFileObject> diagnosticCollector = new DiagnosticCollector<JavaFileObject>();
+
                 CompilationTask task = compiler.getTask(out, fileManager, diagnosticCollector, compilerOptions, null, compilationUnits1);
                 Future<Boolean> future = executor.submit(task);
                 Boolean rv = future.get();
